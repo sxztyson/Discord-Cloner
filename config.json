@@ -1,0 +1,9 @@
+{
+  "botToken": "YOUR_BOT_TOKEN_HERE",
+  "maxFileSizeMb": 25,
+  "commandGuildId": "",
+  "commandChannelId": "",
+  "accountPasscodeHash": "d115ecd13d14235a3be4fd1ed6f777dd5571a25ba3cf73f5addf89cfb27eea2c",
+  "accounts": [],
+  "userToken": ""
+}

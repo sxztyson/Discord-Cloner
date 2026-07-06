@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Discord Media Scraper</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="page-shell">
+
+    <header class="hero">
+      <div class="hero-left">
+        <div class="hero-icon">📡</div>
+        <div>
+          <p class="eyebrow">Discord Tool</p>
+          <h1>Media Relay</h1>
+          <p class="subtext">Scrape and relay media from any channel to a webhook.</p>
+        </div>
+      </div>
+      <div class="badge">Fast &bull; Dedup &bull; Web UI</div>
+    </header>
+
+    <main class="content-card">
+
+      <!-- ── Left: Form ── -->
+      <section class="form-panel">
+
+        {% if errors %}
+          <div class="alert alert-error">
+            <strong>Fix these first:</strong>
+            <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+          </div>
+        {% endif %}
+
+        {% if success %}
+          <div class="alert alert-success">{{ success }}</div>
+        {% endif %}
+
+        <form method="post">
+
+          <p class="section-title">Source &amp; Destination</p>
+
+          <div class="form-group">
+            <label class="field-label">Source Channel ID</label>
+            <input type="text" name="source_channel_id"
+              value="{{ form.source_channel_id }}"
+              placeholder="123456789012345678" />
+          </div>
+
+          <div class="form-group">
+            <label class="field-label">Destination Webhook URL</label>
+            <input type="url" name="webhook_url"
+              value="{{ form.webhook_url }}"
+              placeholder="https://discord.com/api/webhooks/..." />
+          </div>
+
+          <div class="form-group">
+            <label class="field-label">Filter by User ID <span class="input-hint">(optional — leave blank to scrape everyone)</span></label>
+            <input type="text" name="filter_user_id"
+              value="{{ form.filter_user_id }}"
+              placeholder="User ID e.g. 123456789012345678" />
+          </div>
+
+          {% if accounts | length > 1 %}
+          <div class="form-group">
+            <label class="field-label">Account <span class="input-hint">(which user token to use)</span></label>
+            <select name="account_name">
+              {% for acct in accounts %}
+                <option value="{{ acct.name }}" {% if form.account_name == acct.name %}selected{% endif %}>{{ acct.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% else %}
+          <input type="hidden" name="account_name" value="{{ accounts[0].name if accounts else '' }}" />
+          {% endif %}
+
+          <div class="form-divider"></div>
+
+          <p class="section-title">Media Options</p>
+
+          <p class="fieldset-label">File types to relay</p>
+          <div class="checkbox-grid">
+            <label class="checkbox-label">
+              <input type="checkbox" name="relay_all" {% if form.relay_all %}checked{% endif %} />
+              Everything (all + text)
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="media_type_image" {% if form.media_types.image %}checked{% endif %} />
+              Images
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="media_type_gif" {% if form.media_types.gif %}checked{% endif %} />
+              GIFs
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="media_type_video" {% if form.media_types.video %}checked{% endif %} />
+              Videos
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="media_type_sticker" {% if form.media_types.sticker %}checked{% endif %} />
+              Stickers
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="media_type_other" {% if form.media_types.other %}checked{% endif %} />
+              Other files
+            </label>
+          </div>
+
+          <div class="two-col">
+            <label class="checkbox-label">
+              <input type="checkbox" name="include_text" {% if form.include_text %}checked{% endif %} />
+              Text with media (captions)
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="send_text_only" {% if form.send_text_only %}checked{% endif %} />
+              Text-only messages
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="include_forwarded" {% if form.include_forwarded %}checked{% endif %} />
+              Forwarded messages
+            </label>
+          </div>
+
+          <div class="form-divider"></div>
+
+          <p class="section-title">Options</p>
+
+          <div class="checkbox-grid" style="margin-bottom: 22px;">
+            <label class="checkbox-label">
+              <input type="checkbox" name="use_original_author" {% if form.use_original_author %}checked{% endif %} />
+              Use original author name &amp; avatar in webhook
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="split_media" {% if form.split_media %}checked{% endif %} />
+              Split multi-media into separate messages
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="clear_cache" {% if form.clear_cache %}checked{% endif %} />
+              Clear duplicate cache before relay
+            </label>
+          </div>
+
+          <button type="submit" class="primary-button">
+            ▶&nbsp; Start Relay
+          </button>
+
+        </form>
+      </section>
+
+      <!-- ── Right: Info & Jobs ── -->
+      <section class="info-panel">
+
+        <!-- Config -->
+        <div class="info-block">
+          <div class="block-header">
+            <span class="block-title">Config</span>
+          </div>
+          <div class="config-row">
+            <span class="key">Token</span>
+            <span class="val">{% if config.userToken is defined and config.userToken %}{{ config.userToken[:8] }}••••••••{% else %}Not set{% endif %}</span>
+          </div>
+          <div class="config-row">
+            <span class="key">Max file size</span>
+            <span class="val">{{ config.maxFileSizeMb or 25 }} MB</span>
+          </div>
+          <div class="config-row">
+            <span class="key">Selected media</span>
+            <span class="val">{{ selected_media | join(', ') }}</span>
+          </div>
+          <div class="config-row">
+            <span class="key">Bot</span>
+            <span class="val">
+              {% if bot.connected %}
+                <span class="bot-online">● Online</span>
+                <span class="muted" style="font-weight:400;font-size:0.82rem;">&nbsp;{{ bot.username }}</span>
+              {% elif config.botToken %}
+                <span class="bot-connecting">◌ Connecting…</span>
+              {% else %}
+                <span class="bot-offline">○ Disabled</span>
+                <span class="muted" style="font-weight:400;font-size:0.8rem;">&nbsp;(add botToken to config)</span>
+              {% endif %}
+            </span>
+          </div>
+        </div>
+
+        <!-- Bot commands reference -->
+        {% if config.botToken %}
+        <div class="info-block">
+          <div class="block-header">
+            <span class="block-title">Bot commands</span>
+            <span class="block-meta">prefix: <code style="font-size:0.8rem;">!</code></span>
+          </div>
+          <div class="cmd-list">
+            <div class="cmd-row"><code>/scrape_category</code><span>Clone category &amp; channels</span></div>
+            <div class="cmd-row cmd-indent"><code>category_id</code><span>Source Category ID</span></div>
+            <div class="cmd-row"><code>/scraper</code><span>Open control panel</span></div>
+            <div class="cmd-row"><code>/info</code><span>Detailed statistics</span></div>
+            <div class="cmd-row"><code>/help</code><span>Usage guide</span></div>
+            <div class="cmd-row cmd-divider"><code>!scrape_category</code><span>Clone category &amp; channels</span></div>
+            <div class="cmd-row"><code>!scraper</code><span>Drop control panel in chat</span></div>
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- Duplicate cache -->
+        <div class="info-block">
+          <div class="block-header">
+            <span class="block-title">Duplicate cache</span>
+            <span class="cache-stats">{{ cache_channels }} ch &bull; {{ total_cache_entries }} hashes</span>
+          </div>
+          <form method="post" action="{{ url_for('clear_cache_route') }}">
+            <input type="hidden" name="active_job_id" value="{{ active_job_id }}" />
+            <button type="submit" class="secondary-button danger-button"
+              onclick="return confirm('Clear ALL duplicate cache? The next relay will resend everything.')">
+              Clear all cache
+            </button>
+          </form>
+        </div>
+
+        <!-- Job queue -->
+        <div class="info-block">
+          <div class="block-header">
+            <span class="block-title">Job queue</span>
+            <span class="block-meta">{{ jobs | length }} job{{ 's' if jobs | length != 1 else '' }}</span>
+          </div>
+          {% if jobs %}
+            <div class="job-list">
+              {% for job in jobs %}
+                <div class="job-card{% if selected_job and job.id == selected_job.id %} selected{% endif %}" data-job-id="{{ job.id }}">
+                  <div class="job-head">
+                    <div class="job-head-left">
+                      <div class="job-title">
+                        {{ job.source_channel_id }} &rarr; <span class="muted">…{{ job.webhook_url.split('/')[-1][:14] }}</span>
+                      </div>
+                      <div class="job-subtitle">
+                        ID: {{ job.id }}
+                        &nbsp;&bull; Account: {{ job.account_name }}
+                        {% if job.filter_user_id %}&nbsp;&bull; User: {{ job.filter_user_id }}{% endif %}
+                      </div>
+                    </div>
+                    <div class="job-actions">
+                      <span class="job-status status-{{ job.status }}">
+                        <span class="status-dot"></span>{{ job.status | capitalize }}
+                      </span>
+                      <a class="job-link" href="{{ url_for('index', active_job_id=job.id) }}">View</a>
+                      {% if job.status in ['running', 'queued', 'cancelling'] %}
+                        <form method="post" action="{{ url_for('kill_job', job_id=job.id) }}" class="inline-form">
+                          <button type="submit" class="secondary-button kill-button">Kill</button>
+                        </form>
+                      {% else %}
+                        <form method="post" action="{{ url_for('remove_job', job_id=job.id) }}" class="inline-form">
+                          <button type="submit" class="secondary-button">Remove</button>
+                        </form>
+                      {% endif %}
+                    </div>
+                  </div>
+
+                  <div class="progress-wrap">
+                    <div class="progress-label">
+                      <span>Progress</span>
+                      <span class="progress-pct">{{ job.progress }}%</span>
+                    </div>
+                    <div class="progress-bar">
+                      <div class="progress-fill status-fill-{{ job.status }}" style="width: {{ job.progress }}%;"></div>
+                    </div>
+                    <div class="phase-label" data-field="phase_label">{{ job.phase_label }}</div>
+                    <div class="job-counters">
+                      <span>Scanned: <strong data-field="messages_scanned">{{ job.messages_scanned | default(0) | shortnum }}</strong></span>
+                      <span>Sent: <strong data-field="media_sent">{{ job.media_sent | default(0) | shortnum }}</strong></span>
+                    </div>
+                    <div class="type-counters" data-sent-by-type="{{ job.sent_by_type | tojson }}">
+                      {% set t = job.sent_by_type %}
+                      {% if t.image %}<span class="type-chip">🖼️ {{ t.image | shortnum }}</span>{% endif %}
+                      {% if t.gif %}<span class="type-chip">🎞️ {{ t.gif | shortnum }}</span>{% endif %}
+                      {% if t.video %}<span class="type-chip">🎬 {{ t.video | shortnum }}</span>{% endif %}
+                      {% if t.sticker %}<span class="type-chip">🎭 {{ t.sticker | shortnum }}</span>{% endif %}
+                      {% if t.other %}<span class="type-chip">📎 {{ t.other | shortnum }}</span>{% endif %}
+                      {% if t.text %}<span class="type-chip">💬 {{ t.text | shortnum }}</span>{% endif %}
+                    </div>
+                  </div>
+
+                  <div class="job-meta">
+                    <span class="job-tag">Media: {{ 'All' if job.relay_all else job.media_types | join(', ') }}</span>
+                    {% if job.include_text %}<span class="job-tag">+ text</span>{% endif %}
+                    {% if job.send_text_only %}<span class="job-tag">text-only</span>{% endif %}
+                    {% if job.filter_user_id %}<span class="job-tag">user {{ job.filter_user_id }}</span>{% endif %}
+                    {% if job.error %}<span class="error-inline">{{ job.error }}</span>{% endif %}
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="log-placeholder">No jobs yet.</div>
+          {% endif %}
+        </div>
+
+        <!-- Logs -->
+        <div class="info-block">
+          <div class="log-header">
+            <span class="block-title">Job logs</span>
+            {% if selected_job and selected_job.logs %}
+              <button type="button" class="secondary-button" onclick="copyAllLogs()">Copy all</button>
+            {% endif %}
+          </div>
+
+          {% if selected_job %}
+            <div class="selected-job-summary">
+              <div>
+                <strong>{{ selected_job.source_channel_id }}</strong> &rarr;
+                …{{ selected_job.webhook_url.split('/')[-1] }}
+                <span class="subtitle">
+                  &nbsp;&bull; Job {{ selected_job.id }}
+                  &bull; <span class="job-status status-{{ selected_job.status }}">
+                    <span class="status-dot"></span>{{ selected_job.status | capitalize }}
+                  </span>
+                  {% if selected_job.filter_user_id %}&bull; User {{ selected_job.filter_user_id }}{% endif %}
+                  {% if selected_job.relay_all %}&bull; All content{% endif %}
+                </span>
+              </div>
+              {% if selected_job.error %}
+                <div class="job-error">Error: {{ selected_job.error }}</div>
+              {% endif %}
+            </div>
+
+            {% if selected_job.logs %}
+              <div class="log-box" id="job-log-box">
+                {% for line in selected_job.logs[-80:] %}
+                  <div>{{ line }}</div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="log-placeholder">Logs will appear once the job starts.</div>
+            {% endif %}
+          {% else %}
+            <div class="log-placeholder">Select a job above to view its logs.</div>
+          {% endif %}
+        </div>
+
+      </section>
+    </main>
+
+    <footer class="footer">Discord Media Relay &mdash; Flask + discord.py</footer>
+  </div>
+
+  <script>
+    const logBox = document.getElementById('job-log-box');
+    if (logBox) logBox.scrollTop = logBox.scrollHeight;
+
+    // Keep the free-tier server awake while this tab is open
+    setInterval(() => fetch('/ping').catch(() => {}), 240000);
+
+    let _knownJobCount = {{ jobs | length }};
+    const _activeJobId = '{{ active_job_id }}';
+
+    function escHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function fmtNum(n) {
+      if (n >= 1e6) return (n/1e6).toFixed(1).replace(/\.0$/,'') + 'M';
+      if (n >= 1000) return (n/1000).toFixed(1).replace(/\.0$/,'') + 'k';
+      return String(n);
+    }
+
+    function poll() {
+      fetch('/api/status')
+        .then(r => r.json())
+        .then(data => {
+          // If a job was added or removed, do one full reload to re-render the list
+          if (data.jobs.length !== _knownJobCount) {
+            window.location.reload();
+            return;
+          }
+
+          let needReload = false;
+          data.jobs.forEach(job => {
+            const card = document.querySelector(`[data-job-id="${job.id}"]`);
+            if (!card) return;
+
+            // Progress bar + percentage
+            const fill = card.querySelector('.progress-fill');
+            if (fill) {
+              fill.style.width = job.progress + '%';
+              fill.className = `progress-fill status-fill-${job.status}`;
+            }
+            const pct = card.querySelector('.progress-pct');
+            if (pct) pct.textContent = job.progress + '%';
+
+            // Status badge
+            const badge = card.querySelector('.job-status');
+            if (badge) {
+              badge.className = `job-status status-${job.status}`;
+              badge.innerHTML = `<span class="status-dot"></span>${job.status.charAt(0).toUpperCase() + job.status.slice(1)}`;
+            }
+
+            // Phase label
+            const phaseEl = card.querySelector('[data-field="phase_label"]');
+            if (phaseEl && job.phase_label !== undefined) phaseEl.textContent = job.phase_label;
+
+            // Live counters
+            const scannedEl = card.querySelector('[data-field="messages_scanned"]');
+            if (scannedEl && job.messages_scanned !== undefined) scannedEl.textContent = fmtNum(job.messages_scanned);
+            const sentEl = card.querySelector('[data-field="media_sent"]');
+            if (sentEl && job.media_sent !== undefined) sentEl.textContent = fmtNum(job.media_sent);
+
+            // Per-type breakdown chips
+            if (job.sent_by_type) {
+              const typeEl = card.querySelector('.type-counters');
+              if (typeEl) {
+                const icons = {image:'🖼️',gif:'🎞️',video:'🎬',sticker:'🎭',other:'📎',text:'💬'};
+                typeEl.innerHTML = Object.entries(job.sent_by_type)
+                  .filter(([,v]) => v > 0)
+                  .map(([k,v]) => `<span class="type-chip">${icons[k]||'📄'} ${fmtNum(v)}</span>`)
+                  .join('');
+              }
+            }
+
+            // If button state changed (running→done), reload once to swap Kill→Remove
+            const hasKill = !!card.querySelector('.kill-button');
+            const isActive = ['running', 'queued', 'cancelling'].includes(job.status);
+            if (hasKill !== isActive) needReload = true;
+          });
+
+          if (needReload) { window.location.reload(); return; }
+
+          // Update logs for the selected job without scrolling the page
+          const logBox = document.getElementById('job-log-box');
+          if (logBox && _activeJobId) {
+            const job = data.jobs.find(j => j.id === _activeJobId);
+            if (job && job.logs) {
+              const atBottom = logBox.scrollHeight - logBox.scrollTop - logBox.clientHeight < 40;
+              logBox.innerHTML = job.logs.map(l => `<div>${escHtml(l)}</div>`).join('');
+              if (atBottom) logBox.scrollTop = logBox.scrollHeight;
+            }
+          }
+
+          if (data.has_active_jobs) setTimeout(poll, 3000);
+        })
+        .catch(() => {});
+    }
+
+    {% if has_active_jobs %}
+    setTimeout(poll, 3000);
+    {% endif %}
+
+    function copyAllLogs() {
+      const box = document.getElementById('job-log-box');
+      if (!box) { alert('No logs available.'); return; }
+      const text = Array.from(box.querySelectorAll('div')).map(el => el.textContent.trim()).join('\n');
+      if (!text) { alert('No logs available.'); return; }
+      navigator.clipboard.writeText(text).then(
+        () => alert('Copied to clipboard.'),
+        () => alert('Copy failed — please copy manually.')
+      );
+    }
+  </script>
+</body>
+</html>
